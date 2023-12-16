@@ -1,6 +1,6 @@
 #![allow(dead_code, unused)]
 use std::time::Duration;
-
+use tokio;
 use log::Level;
 use tokio::{io::AsyncReadExt, join, time};
 
@@ -78,6 +78,10 @@ async fn run() {
     // );
 }
 
+struct MyStruct {
+    field: i32
+}
+
 #[tokio::main]
 async fn main() {
     // here we initialte simple_logger to bind with log
@@ -95,4 +99,56 @@ async fn main() {
     run().await; // executing run funciton
     let end = std::time::Instant::now(); // capture instant timestamp
     println!("Took {:?} seconds", end - start); // printing time diffencnce between start and end
+
+    use tokio::sync;
+    // thread safe with mutiability impl(Send marker trait)
+    let lock = std::sync::Arc::new(
+        sync::Mutex::new(MyStruct{field: 0})
+    );
+
+    // one of the way of creating reference count of lock
+    let lock_a = lock.clone();
+    let lock_b = lock.clone();
+    // spawning new thread and modifing struct field value
+    let a = tokio::spawn(async move {
+        let mut val = lock_a.lock().await;
+        val.field = 1
+    });
+    // spawning new thread and modifing struct field value
+    let b  = tokio::spawn(async move  {
+        let mut val = lock_b.lock().await;
+        val.field = 2;
+    });
+    // execute the a and b joinhandler 
+    tokio::join!(a, b).1.unwrap();
+    // printing the modified struct field
+    let val = lock.lock().await;
+    println!("Value is: {}", val.field);
+
+    // mpsc channel with capacity of max tx value will be 10
+    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+    let tx1= tx.clone();
+
+    tokio::spawn(async move {
+        for i in 0..=20{
+            tx.send(i).await.unwrap();
+        }
+    });
+    tokio::spawn(async move {
+        for i in 0..=20{
+            tx1.clone().send(i).await.unwrap();
+        }
+    });
+
+    // received the sending value
+
+    while let Some(value) = rx.recv().await {
+        println!("GOT THE VALUE {}", value);
+    }
+
+
+
+
+
+
 }
