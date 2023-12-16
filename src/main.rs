@@ -1,6 +1,6 @@
 #![allow(dead_code, unused)]
 use std::time::Duration;
-use tokio;
+use tokio::{self, io::AsyncWriteExt, process, signal};
 use log::Level;
 use tokio::{io::AsyncReadExt, join, time};
 
@@ -125,7 +125,7 @@ async fn main() {
     let val = lock.lock().await;
     println!("Value is: {}", val.field);
 
-    // mpsc channel with capacity of max tx value will be 10
+    // mpsc channel with capacity 
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
     let tx1= tx.clone();
 
@@ -147,8 +147,144 @@ async fn main() {
     }
 
 
+    // tokio net
+    use tokio::net;
+
+    // let host = "localhost::8080";
+    // // start up tcp server
+    // // FACING ERROR IN THIS SECTION.
+    // let srv = tokio::net::TcpListener::bind(host).await.unwrap();
+
+    // loop {
+    //     // accept new connection
+    //     let (mut sock, _) = srv.accept().await.unwrap();
+    //     // Spawn a new task to handle the connection
+    //     tokio::spawn(async move {
+    //         let mut buf = [0; 1024];
+    //         let n  = sock.read(&mut buf).await.unwrap();
+    //         sock.write_all(&buf[0..n]).await.unwrap();
+    //         let data  = std::str::from_utf8(&buf[0..n]).unwrap();
+    //         println!("ECHOED: {:?}", data);
+    //         sock.shutdown().await.unwrap();
 
 
+    //     });
+    //     // tokio task
 
+    //     let task_a = tokio::task::spawn_blocking(|| {
+    //         println!("Starting fib(30) computation...");
+    //         let res = fib(30);
+    //         println!("fib(30 = {}", res);
+    //     });
+    //     tokio::join!(task_a).0.unwrap();
+
+
+    // }
+
+        let res = reading_file().await;
+
+        println!("Result of file {:?}", res);
+        let res_std_out = process_manage().await;
+        println!("The out put of process_manage fun {:?}", res_std_out);
+        tokio_signal().await;
+        tokio_time().await;
+        tokio_time_out().await;
 
 }
+
+
+
+async fn reading_file() ->Result<(), Box<dyn std::error::Error>> {
+    let mut file_ = tokio::fs::File::open("beeg.csv").await?;
+    let mut contents = String::new();
+    file_.read_to_string(&mut contents).await?;
+    println!("File contents: {}", contents);
+
+    let mut outfile = tokio::fs::File::create("out.txt").await?;
+    outfile.write_all(contents.as_bytes()).await?;
+    Ok(())
+}
+
+async fn process_manage() ->Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = process::Command::new("sort");
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stdin(std::process::Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let animal = &["dog", "bird", "frog", "cat", "fish"];
+    let mut stdin = child.stdin.take().expect("child did not have a handle to stdin");
+    stdin.write(animal.join("\n").as_bytes()).await.expect("could not write to stdin");
+    drop(stdin);
+    let op = child.wait_with_output().await?;
+    println!("sorted: \n\n{}", std::str::from_utf8(&op.stdout)?);
+
+    Ok(())
+}
+
+async fn tokio_signal() ->Result<(), Box<dyn std::error::Error>> {
+    println!("Waiting for ctrl-c");
+    signal::ctrl_c().await?;
+    println!("received ctrl-c event");
+    Ok(())
+}
+
+async fn tokio_time() ->Result<(), Box<dyn std::error::Error>> {
+
+    let duration = tokio::time::Duration::from_secs(1);
+    let mut when = tokio::time::interval(duration);
+    when.tick().await;
+    println!("Tick 1");
+    when.tick().await;
+    println!("Tick 2");
+    when.tick().await;
+    println!("Tick 3");
+    Ok(())
+}
+
+async fn tokio_time_out() -> Result<(), Box<dyn std::error::Error>>{
+    simple_logger::init_with_level(log::Level::Info)?;
+    if let Err(_) = tokio::time::timeout (
+        tokio::time::Duration::from_secs(2), sleepy(),
+    ).await {
+        log::info!("Sleepy time out");
+    };
+    Ok(())
+}
+
+async fn sleepy() {
+    println!("starting sleepy");
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    log::info!("Ending sleepy");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn test_do_something() {
+        assert_eq!(3,3);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
